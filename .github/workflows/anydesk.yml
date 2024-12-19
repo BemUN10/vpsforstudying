@@ -1,0 +1,79 @@
+name: winrdp
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Download AnyDesk
+        run: Invoke-WebRequest https://download.anydesk.com/AnyDesk.exe -OutFile C:\Users\runneradmin\Desktop\AnyDesk.exe
+
+      - name: Install AnyDesk
+        run: Start-Process -FilePath C:\Users\runneradmin\Desktop\AnyDesk.exe -ArgumentList '/install' -Wait
+
+      - name: Start AnyDesk
+        run: Start-Process -FilePath "C:\Program Files (x86)\AnyDesk\AnyDesk.exe" -ArgumentList "/set-password=P@ssw0rd!" -Wait
+
+      - name: Get AnyDesk ID
+        run: |
+          $anydeskId = (Get-Content "C:\Program Files (x86)\AnyDesk\AnyDesk.ini" | Select-String -Pattern "deskNo=") -replace "deskNo=", ""
+          echo "AnyDesk ID: $anydeskId"
+        
+      - name: Enable TS (Remote Desktop)
+        run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+
+      - name: Enable Remote Desktop Firewall Rule
+        run: Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+      - name: Enable User Authentication for RDP
+        run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+
+      - name: Set runneradmin Password
+        run: Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "P@ssw0rd!" -Force)
+
+      - name: Create BAT file on runneradmin Desktop to open Google Drive folder
+        run: |
+          $desktopPath = "C:\Users\runneradmin\Desktop\file.bat"
+          $batContent = 'start https://drive.google.com/drive/folders/11e8EFzUsPmagRTWwuYvg8bdvrwV5udOG'
+          Set-Content -Path $desktopPath -Value $batContent
+          Start-Process -FilePath $desktopPath
+
+      - name: Create BAT file on runneradmin Desktop to download WinRAR
+        run: |
+          $winrarBatPath = "C:\Users\runneradmin\Desktop\winrar.bat"
+          $winrarBatContent = 'start https://www.win-rar.com/predownload.html?&L=4'
+          Set-Content -Path $winrarBatPath -Value $winrarBatContent
+
+      - name: Download VLC
+        run: |
+          $vlcUrl = "https://get.videolan.org/vlc/3.0.21/win32/vlc-3.0.21-win32.exe"
+          $vlcPath = "C:\Users\runneradmin\Desktop\vlc-3.0.21-win32.exe"
+          Invoke-WebRequest -Uri $vlcUrl -OutFile $vlcPath
+
+      - name: Download Google Drive File
+        run: |
+          $fileId = "18XultT1S-fEYUbWkh6FHjqz8aMJBsHrQ"
+          $url = "https://drive.google.com/uc?export=download&id=$fileId"
+          $outputPath = "C:\Users\runneradmin\Desktop\downloaded_wallpaper.jpg"
+          Invoke-WebRequest -Uri $url -OutFile $outputPath
+
+      - name: Set Wallpaper
+        run: |
+          $wallpaperPath = "C:\Users\runneradmin\Desktop\downloaded_wallpaper.jpg"
+          $regKey = "HKCU:\Control Panel\Desktop"
+          Set-ItemProperty -Path $regKey -Name "Wallpaper" -Value $wallpaperPath
+          Set-ItemProperty -Path $regKey -Name "WallpaperStyle" -Value 2
+          Set-ItemProperty -Path $regKey -Name "TileWallpaper" -Value 0
+          (New-Object -ComObject WScript.Shell).SendKeys('^{ESC}')
+
+      - name: Create Credits.txt file on Desktop
+        run: |
+          $creditsPath = "C:\Users\runneradmin\Desktop\Credits.txt"
+          $creditsContent = "Modified By Daniel 64 Made with chatgpt"
+          Set-Content -Path $creditsPath -Value $creditsContent
+          Start-Process -FilePath $creditsPath
+
+      - name: Create Tunnel with AnyDesk
+        run: |
+          # Assuming AnyDesk is running on the default port (5900)
+          Start-Process -FilePath "C:\Program Files (x86)\AnyDesk\AnyDesk.exe"
