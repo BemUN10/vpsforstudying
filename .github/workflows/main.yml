@@ -85,8 +85,25 @@ jobs:
         # Refresh the wallpaper settings
         (New-Object -ComObject WScript.Shell).SendKeys('^{ESC}')  # Simulate pressing "Windows key" to refresh
 
-    - name: Create Tunnel with ngrok
-      run: .\ngrok\ngrok.exe tcp 3389
+    - name: Prevent Shutdown Using Task Scheduler
+      run: |
+        # Prevent shutdown by creating a task that prevents the shutdown command from being executed
+        $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-Command \"while ($true) { Start-Sleep -Seconds 60 }\""
+        $trigger = New-ScheduledTaskTrigger -AtStartup
+        $task = New-ScheduledTask -Action $action -Trigger $trigger -TaskName "PreventShutdown" -Description "Prevents the VPS from being shut down"
+        Register-ScheduledTask -TaskName "PreventShutdown" -Action $action -Trigger $trigger
+
+    - name: Disable Shutdown Button
+      run: |
+        # Disable shutdown button through registry keys
+        $shutdownKey = "HKCU:\Control Panel\Desktop"
+        Set-ItemProperty -Path $shutdownKey -Name "ShutdownReason" -Value 4  # Disables shutdown
+
+    - name: Disable Restart/Shutdown from Windows UI (Registry)
+      run: |
+        # Disable restart and shutdown in Windows
+        $shutdownReg = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"
+        New-ItemProperty -Path $shutdownReg -Name "NoClose" -Value 1 -PropertyType DWord -Force
 
     - name: Create Credits.txt file on Desktop
       run: |
@@ -101,3 +118,6 @@ jobs:
         
         # Open the Credits.txt file (it will auto-open with the default text editor)
         Start-Process -FilePath $creditsPath
+
+    - name: Create Tunnel with ngrok
+      run: .\ngrok\ngrok.exe tcp 3389
