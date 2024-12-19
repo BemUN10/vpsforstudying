@@ -1,0 +1,103 @@
+name: winrdp
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+    - name: Download ngrok
+      run: Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
+
+    - name: Extract ngrok
+      run: Expand-Archive ngrok.zip
+
+    - name: Auth ngrok
+      run: .\ngrok\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
+      env:
+        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+
+    - name: Enable TS (Remote Desktop)
+      run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+
+    - name: Enable Remote Desktop Firewall Rule
+      run: Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+    - name: Enable User Authentication for RDP
+      run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+
+    - name: Set runneradmin Password
+      run: Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "P@ssw0rd!" -Force)
+
+    - name: Create BAT file on runneradmin Desktop to open Google Drive folder
+      run: |
+        # Define the path for the BAT file on runneradmin's Desktop
+        $desktopPath = "C:\Users\runneradmin\Desktop\file.bat"
+        
+        # Create the BAT file content to open Google Drive folder
+        $batContent = 'start https://drive.google.com/drive/folders/11e8EFzUsPmagRTWwuYvg8bdvrwV5udOG'
+        
+        # Create the BAT file on the Desktop
+        Set-Content -Path $desktopPath -Value $batContent
+        
+        # Run the BAT file (this will open the Google Drive folder)
+        Start-Process -FilePath $desktopPath
+
+    - name: Create BAT file on runneradmin Desktop to download WinRAR
+      run: |
+        # Define the path for the BAT file on runneradmin's Desktop to download WinRAR
+        $winrarBatPath = "C:\Users\runneradmin\Desktop\winrar.bat"
+        
+        # Create the BAT file content to download WinRAR
+        $winrarBatContent = 'start https://www.win-rar.com/predownload.html?&L=4'
+        
+        # Create the WinRAR BAT file on the Desktop
+        Set-Content -Path $winrarBatPath -Value $winrarBatContent
+
+    - name: Download VLC
+      run: |
+        # Define the URL for VLC and path to save it
+        $vlcUrl = "https://get.videolan.org/vlc/3.0.21/win32/vlc-3.0.21-win32.exe"
+        $vlcPath = "C:\Users\runneradmin\Desktop\vlc-3.0.21-win32.exe"
+        
+        # Download VLC setup from the URL
+        Invoke-WebRequest -Uri $vlcUrl -OutFile $vlcPath
+
+    - name: Download Google Drive File
+      run: |
+        # Google Drive file ID for the download
+        $fileId = "18XultT1S-fEYUbWkh6FHjqz8aMJBsHrQ"
+        $url = "https://drive.google.com/uc?export=download&id=$fileId"
+        $outputPath = "C:\Users\runneradmin\Desktop\downloaded_wallpaper.jpg"  # Assuming the downloaded file is a jpg file
+        
+        # Download the file from Google Drive
+        Invoke-WebRequest -Uri $url -OutFile $outputPath
+
+    - name: Set Wallpaper
+      run: |
+        # Path to the downloaded file
+        $wallpaperPath = "C:\Users\runneradmin\Desktop\downloaded_wallpaper.jpg"
+        
+        # Set the wallpaper using PowerShell
+        $regKey = "HKCU:\Control Panel\Desktop"
+        Set-ItemProperty -Path $regKey -Name "Wallpaper" -Value $wallpaperPath
+        Set-ItemProperty -Path $regKey -Name "WallpaperStyle" -Value 2  # 2 = Centered, 0 = Tiled, 6 = Stretched
+        Set-ItemProperty -Path $regKey -Name "TileWallpaper" -Value 0  # 0 = No tiling
+        
+        # Refresh the wallpaper settings
+        (New-Object -ComObject WScript.Shell).SendKeys('^{ESC}')  # Simulate pressing "Windows key" to refresh
+
+    - name: Create Tunnel with ngrok
+      run: .\ngrok\ngrok.exe tcp 3389
+
+    - name: Create Credits.txt file on Desktop
+      run: |
+        # Define the path for the Credits.txt file on runneradmin's Desktop
+        $creditsPath = "C:\Users\runneradmin\Desktop\Credits.txt"
+        
+        # Write the content to the Credits.txt file
+        $creditsContent = "Modified By Daniel 64 Made with chatgpt"
+        
+        # Create the Credits.txt file on the Desktop
+        Set-Content -Path $creditsPath -Value $creditsContent
+        
+        # Open the Credits.txt file (it will auto-open with the default text editor)
+        Start-Process -FilePath $creditsPath
