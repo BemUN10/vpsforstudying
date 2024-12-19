@@ -1,103 +1,110 @@
-name: winrdp
-on: [push, workflow_dispatch]
-jobs:
-  build:
-    runs-on: windows-latest
-    steps:
-    - name: Download ngrok
-      run: Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
+name: Windows 11 VPS with VNC
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
-    - name: Extract ngrok
-      run: Expand-Archive ngrok.zip
+jobs:
+  setup-vps:
+    runs-on: ubuntu-latest  # Ubuntu is used as the host for running QEMU
+
+    steps:
+    - name: Set up environment
+      run: |
+        # Update and install dependencies
+        sudo apt update
+        sudo apt install -y qemu qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils virt-manager libguestfs-tools wget
+
+    - name: Download Windows 11 ISO
+      run: |
+        # Download Windows 11 ISO
+        wget -O /tmp/windows11.iso "https://software.download.prss.microsoft.com/dbazure/Win11_24H2_English_x64.iso?t=e11866d4-d022-492e-8e45-bdee6bbee76a&P1=1734688905&P2=601&P3=2&P4=dLxZUY1SUew8cAdhKWM%2bNQH1K%2fBnn7bWRU1uvUB4jz5fYWvSnQHPS0SJV%2bQcgctaGtTErhSEneSzQp%2fJYvQ0DqTjb0aaHyc0dEP%2f7C53UQ0YWHL27S6Jte7SZihjo9r52zTAkOlWNNPvfjY3x6INb60B2LEcNAZvuXidITxwaGhH9PMevveDgICpaxeZQ35okAtCcZY64lwEaBkkUqS%2b3rCtlibDS4tQSDiW7HgeinI9B7nBeAy8er3BHm%2bN4MAZhxRXPCNhIi7meZsTuyddW6RTxPtPmICP6f0rGeCuPIubn3eB5LINWcweNv%2fLtEzorpqCAQ%2fwx%2fWlO9JXYACTmg%3d%3d"
+
+    - name: Set up QEMU virtual machine
+      run: |
+        # Create a virtual hard disk (200GB)
+        qemu-img create -f qcow2 /tmp/windows11_disk.qcow2 200G
+        
+        # Install Windows 11 using the ISO
+        sudo qemu-system-x86_64 \
+          -m 4G \
+          -cpu host \
+          -smp 2 \
+          -drive file=/tmp/windows11_disk.qcow2,format=qcow2 \
+          -cdrom /tmp/windows11.iso \
+          -boot d \
+          -vnc :1  # Enable VNC on display :1
+
+    - name: Set up VNC server for remote access
+      run: |
+        # Install the VNC server on the VPS for GUI access
+        sudo apt update
+        sudo apt install -y tightvncserver
+
+        # Start VNC server (you can set a password for access)
+        vncserver :1 -geometry 1280x1024 -depth 24
+
+    - name: Download ngrok
+      run: |
+        # Download ngrok for remote access
+        wget https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.zip -O /tmp/ngrok.zip
+        unzip /tmp/ngrok.zip -d /tmp
+        rm /tmp/ngrok.zip
 
     - name: Auth ngrok
-      run: .\ngrok\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
-      env:
-        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+      run: |
+        # Authenticate ngrok with your token (replace with your actual token)
+        /tmp/ngrok authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
 
-    - name: Enable TS (Remote Desktop)
-      run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+    - name: Expose VNC via ngrok
+      run: |
+        # Expose VNC port 5901 (VNC :1 corresponds to port 5901)
+        /tmp/ngrok tcp 5901
 
-    - name: Enable Remote Desktop Firewall Rule
-      run: Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-
-    - name: Enable User Authentication for RDP
-      run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+    - name: Create a BAT file on the Desktop to open Google Drive folder
+      run: |
+        # Create the BAT file to open Google Drive folder (customize this URL)
+        echo start https://drive.google.com/drive/folders/11e8EFzUsPmagRTWwuYvg8bdvrwV5udOG > C:\Users\Administrator\Desktop\file.bat
 
     - name: Set runneradmin Password
-      run: Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "P@ssw0rd!" -Force)
-
-    - name: Create BAT file on runneradmin Desktop to open Google Drive folder
       run: |
-        # Define the path for the BAT file on runneradmin's Desktop
-        $desktopPath = "C:\Users\runneradmin\Desktop\file.bat"
-        
-        # Create the BAT file content to open Google Drive folder
-        $batContent = 'start https://drive.google.com/drive/folders/11e8EFzUsPmagRTWwuYvg8bdvrwV5udOG'
-        
-        # Create the BAT file on the Desktop
-        Set-Content -Path $desktopPath -Value $batContent
-        
-        # Run the BAT file (this will open the Google Drive folder)
-        Start-Process -FilePath $desktopPath
+        # Set the password for the remote admin user on Windows (use whatever user is set)
+        net user runneradmin P@ssw0rd! /add
+        net localgroup "Remote Desktop Users" runneradmin /add
+        net localgroup Administrators runneradmin /add
 
-    - name: Create BAT file on runneradmin Desktop to download WinRAR
+    - name: Create Credits.txt file on Desktop
       run: |
-        # Define the path for the BAT file on runneradmin's Desktop to download WinRAR
-        $winrarBatPath = "C:\Users\runneradmin\Desktop\winrar.bat"
-        
-        # Create the BAT file content to download WinRAR
-        $winrarBatContent = 'start https://www.win-rar.com/predownload.html?&L=4'
-        
-        # Create the WinRAR BAT file on the Desktop
-        Set-Content -Path $winrarBatPath -Value $winrarBatContent
+        # Create the Credits.txt file on the Desktop
+        echo "Modified By Daniel 64 Made with chatgpt" > C:\Users\Administrator\Desktop\Credits.txt
+        # Open the Credits.txt file
+        start C:\Users\Administrator\Desktop\Credits.txt
 
     - name: Download VLC
       run: |
-        # Define the URL for VLC and path to save it
-        $vlcUrl = "https://get.videolan.org/vlc/3.0.21/win32/vlc-3.0.21-win32.exe"
-        $vlcPath = "C:\Users\runneradmin\Desktop\vlc-3.0.21-win32.exe"
-        
-        # Download VLC setup from the URL
-        Invoke-WebRequest -Uri $vlcUrl -OutFile $vlcPath
+        # Download VLC to the Desktop
+        Invoke-WebRequest -Uri https://get.videolan.org/vlc/3.0.21/win32/vlc-3.0.21-win32.exe -OutFile C:\Users\Administrator\Desktop\vlc-3.0.21-win32.exe
 
-    - name: Download Google Drive File
+    - name: Download Wallpaper from Google Drive
       run: |
-        # Google Drive file ID for the download
+        # Get the file ID from Google Drive and download the wallpaper
         $fileId = "18XultT1S-fEYUbWkh6FHjqz8aMJBsHrQ"
         $url = "https://drive.google.com/uc?export=download&id=$fileId"
-        $outputPath = "C:\Users\runneradmin\Desktop\downloaded_wallpaper.jpg"  # Assuming the downloaded file is a jpg file
+        $outputPath = "C:\Users\Administrator\Desktop\downloaded_wallpaper.jpg"
         
-        # Download the file from Google Drive
         Invoke-WebRequest -Uri $url -OutFile $outputPath
 
     - name: Set Wallpaper
       run: |
-        # Path to the downloaded file
-        $wallpaperPath = "C:\Users\runneradmin\Desktop\downloaded_wallpaper.jpg"
-        
-        # Set the wallpaper using PowerShell
-        $regKey = "HKCU:\Control Panel\Desktop"
-        Set-ItemProperty -Path $regKey -Name "Wallpaper" -Value $wallpaperPath
-        Set-ItemProperty -Path $regKey -Name "WallpaperStyle" -Value 2  # 2 = Centered, 0 = Tiled, 6 = Stretched
-        Set-ItemProperty -Path $regKey -Name "TileWallpaper" -Value 0  # 0 = No tiling
-        
-        # Refresh the wallpaper settings
-        (New-Object -ComObject WScript.Shell).SendKeys('^{ESC}')  # Simulate pressing "Windows key" to refresh
+        # Set the downloaded image as wallpaper
+        $wallpaperPath = "C:\Users\Administrator\Desktop\downloaded_wallpaper.jpg"
+        Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "Wallpaper" -Value $wallpaperPath
+        Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "WallpaperStyle" -Value 2
+        Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "TileWallpaper" -Value 0
 
-    - name: Create Credits.txt file on Desktop
+    - name: Keep VPS Running (Prevent Shutdown)
       run: |
-        # Define the path for the Credits.txt file on runneradmin's Desktop
-        $creditsPath = "C:\Users\runneradmin\Desktop\Credits.txt"
-        
-        # Write the content to the Credits.txt file
-        $creditsContent = "Modified By Daniel 64 Made with chatgpt"
-        
-        # Create the Credits.txt file on the Desktop
-        Set-Content -Path $creditsPath -Value $creditsContent
-        
-        # Open the Credits.txt file (it will auto-open with the default text editor)
-        Start-Process -FilePath $creditsPath
-
-    - name: Create Tunnel with ngrok
-      run: .\ngrok\ngrok.exe tcp 3389
+        # Prevent shutdown by locking the system (use as necessary)
+        shutdown /a
+        while ($true) { Start-Sleep -Seconds 3600 }
