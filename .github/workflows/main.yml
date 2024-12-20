@@ -96,5 +96,17 @@ jobs:
         # Open the Credits.txt file (it will auto-open with the default text editor)
         Start-Process -FilePath $creditsPath
 
-    - name: Create Tunnel with ngrok
-      run: .\ngrok\ngrok.exe tcp 3389
+        - name: Create Tunnel with ngrok
+      run: |
+        # Start ngrok and capture output
+        .\ngrok\ngrok.exe tcp 3389 > ngrok_output.txt &
+        Start-Sleep -Seconds 5
+        
+        # Read and parse ngrok output to extract the public IP
+        $output = Get-Content ngrok_output.txt
+        $publicUrl = $output -match "tcp://(.*):(.*)" | Out-Null
+        $publicUrl = $Matches[0]
+        
+        # Display the public IP
+        Write-Output "ngrok public IP: $publicUrl"
+
